@@ -1,0 +1,60 @@
+name: Reservar V-Power
+
+on:
+  schedule:
+    # GitHub usa UTC. Cubre las 20:15 de Madrid en horario de verano e invierno.
+    - cron: "*/5 18-20 * * 1"
+
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Solo comprobar, sin reservar"
+        required: true
+        default: true
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: vivagym-vpower-monday
+  cancel-in-progress: false
+
+jobs:
+  reserve:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    env:
+      VIVAGYM_EMAIL: ${{ secrets.VIVAGYM_EMAIL }}
+      VIVAGYM_PASSWORD: ${{ secrets.VIVAGYM_PASSWORD }}
+      RUN_MODE: ${{ github.event_name }}
+      DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run || 'false' }}
+
+    steps:
+      - name: Descargar agente
+        uses: actions/checkout@v4
+
+      - name: Preparar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Instalar dependencias
+        run: npm install
+
+      - name: Instalar navegador
+        run: npx playwright install --with-deps chromium
+
+      - name: Ejecutar pruebas
+        run: npm test
+
+      - name: Reservar clase
+        run: npm start
+
+      - name: Resumen
+        if: always()
+        run: |
+          echo "## Agente VivaGym" >> "$GITHUB_STEP_SUMMARY"
+          echo "Objetivo: V-Power presencial, Dos Hermanas, lunes 20:15." >> "$GITHUB_STEP_SUMMARY"
+          echo "Resultado del trabajo: ${{ job.status }}." >> "$GITHUB_STEP_SUMMARY"
