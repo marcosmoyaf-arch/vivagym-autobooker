@@ -29,6 +29,17 @@ const page = await context.newPage();
 
 async function login() {
   await page.goto(LOGIN_URL, { waitUntil: "domcontentloaded" });
+    const acceptCookies = page
+    .locator('[data-cky-tag="accept-button"], button.cky-btn-accept')
+    .first();
+
+  await acceptCookies
+    .waitFor({ state: "visible", timeout: 5_000 })
+    .catch(() => {});
+
+  if (await acceptCookies.isVisible().catch(() => false)) {
+    await acceptCookies.click({ force: true });
+  }
 
   if (await page.locator('a[aria-label="Cerrar sesión"]').isVisible().catch(() => false)) return;
 
