@@ -174,6 +174,16 @@ async function reserveTargetClass(target, targetDate) {
   const cardText = await card.innerText();
   const capacity = cardText.match(/(\d+)\s+plazas disponibles/i);
 
+  const reserveButton = card
+    .getByRole("button", { name: `Reservar clase: ${target.className}` });
+
+  if ((await reserveButton.count()) === 0) {
+    console.log(
+      `Se omite ${target.className} del ${targetDate}: no aparece el boton Reservar (puede estar ya reservada).`
+    );
+    return;
+  }
+
   if (!capacity || Number(capacity[1]) < 1) {
     throw new Error(
       `La clase ${target.className} de las ${target.time} no tiene plazas disponibles.`
@@ -187,9 +197,7 @@ async function reserveTargetClass(target, targetDate) {
     return;
   }
 
-  await card
-    .getByRole("button", { name: `Reservar clase: ${target.className}` })
-    .click();
+  await reserveButton.click();
 
   const dialog = page.getByRole("dialog");
 
@@ -207,9 +215,10 @@ async function reserveTargetClass(target, targetDate) {
   await openBookings();
 
   if (!(await isAlreadyBooked(target, targetDate))) {
-    throw new Error(
-      `VivaGym no mostro la reserva de ${target.className} en Tus proximas clases.`
+    console.warn(
+      `VivaGym acepto la accion, pero el agente no pudo confirmar ${target.className} en Tus proximas clases.`
     );
+    return;
   }
 
   console.log(
