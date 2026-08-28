@@ -1,0 +1,17 @@
+{
+  "name": "vivagym-autobooker",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Reserva semanal automatica de V-Power en VivaGym Dos Hermanas.",
+  "scripts": {
+    "start": "node src/agent.mjs",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "playwright": "^1.55.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
