@@ -41,12 +41,12 @@ async function login() {
     await acceptCookies.click({ force: true });
   }
 
-  if (await page.locator('a[aria-label="Cerrar sesión"]').isVisible().catch(() => false)) return;
+  if (await page.locator('a[aria-label="Cerrar sesión"]').first()).isVisible().catch(() => false)) return;
 
   await page.locator('input[name="email"]').fill(email);
   await page.locator('input[name="password"]').fill(password);
   await page.locator('button[type="submit"]').click();
-  await page.locator('a[aria-label="Cerrar sesión"]').waitFor({ state: "visible", timeout: 20_000 });
+  await page.locator('a[aria-label="Cerrar sesión"]').first().waitFor({ state: "visible", timeout: 20_000 });
 }
 
 async function openBookings() {
