@@ -24,12 +24,16 @@ if (runMode === "schedule" && !isBookingWindow()) {
 const targetDate = nextMondayIso();
 const targetShortDate = shortSpanishDate(targetDate);
 const browser = await chromium.launch({ headless: true });
-const context = await browser.newContext({ locale: "es-ES", timezoneId: "Europe/Madrid" });
+const context = await browser.newContext({
+  locale: "es-ES",
+  timezoneId: "Europe/Madrid"
+});
 const page = await context.newPage();
 
 async function login() {
   await page.goto(LOGIN_URL, { waitUntil: "domcontentloaded" });
-    const acceptCookies = page
+
+  const acceptCookies = page
     .locator('[data-cky-tag="accept-button"], button.cky-btn-accept')
     .first();
 
@@ -41,90 +45,152 @@ async function login() {
     await acceptCookies.click({ force: true });
   }
 
-  if (await page.locator('a[aria-label="Cerrar sesión"]:visible').first().isVisible().catch(() => false)) return;
+  const logout = page
+    .locator('a[aria-label="Cerrar sesión"]:visible')
+    .first();
+
+  if (await logout.isVisible().catch(() => false)) return;
 
   await page.locator('input[name="email"]').fill(email);
   await page.locator('input[name="password"]').fill(password);
   await page.locator('button[type="submit"]').click();
-  await page.locator('a[aria-label="Cerrar sesión"]:visible').first().waitFor({ state: "visible", timeout: 20_000 });
+  await logout.waitFor({ state: "visible", timeout: 20_000 });
 }
 
 async function openBookings() {
   await page.goto(BOOKINGS_URL, { waitUntil: "domcontentloaded" });
-  await page.getByRole("heading", { name: "Calendario de clases" }).waitFor({ state: "visible", timeout: 20_000 });
+
+  await page
+    .getByRole("heading", { name: "Calendario de clases" })
+    .waitFor({ state: "visible", timeout: 20_000 });
 }
 
 async function isAlreadyBooked() {
   const mainText = await page.locator("main").innerText();
-  return mainText.includes(TARGET_CLASS)
-    && mainText.includes(`${targetShortDate} a las ${TARGET_TIME}`)
-    && mainText.includes(TARGET_GYM);
+
+  return (
+    mainText.includes(TARGET_CLASS) &&
+    mainText.includes(`${targetShortDate} a las ${TARGET_TIME}`) &&
+    mainText.includes(TARGET_GYM)
+  );
 }
 
 async function selectGym() {
-  const gymButton = page.getByRole("button", { name: "Gimnasio", exact: true });
+  const gymButton = page.getByRole("button", {
+    name: "Gimnasio",
+    exact: true
+  });
+
   await gymButton.click();
 
-  const search = page.locator('input[aria-label="Buscar gimnasio"]');
-  await search.waitFor({ state: "visible" });
+  const search = page
+    .locator('input[aria-label="Buscar gimnasio"]:visible')
+    .first();
 
-  const selected = page.locator('input[type="checkbox"]:checked');
+  await search.waitFor({ state: "visible" });
+  await search.fill(TARGET_GYM);
+
+  const target = page
+    .locator(`input[type="checkbox"][aria-label="${TARGET_GYM}"]:visible`)
+    .first();
+
+  await target.waitFor({ state: "visible" });
+
+  const selected = page.locator(
+    'input[type="checkbox"]:checked:visible:not([id^="cky"])'
+  );
+
   for (let i = (await selected.count()) - 1; i >= 0; i -= 1) {
     const option = selected.nth(i);
+
     if ((await option.getAttribute("aria-label")) !== TARGET_GYM) {
       await option.uncheck({ force: true });
     }
   }
 
-  await search.fill(TARGET_GYM);
-  const target = page.locator(`input[aria-label="${TARGET_GYM}"]`);
-  await target.waitFor({ state: "visible" });
-  if (!(await target.isChecked())) await target.check({ force: true });
+  if (!(await target.isChecked())) {
+    await target.check({ force: true });
+  }
+
   await gymButton.click();
 }
 
 async function loadTargetDay() {
-  await page.locator('input[placeholder="Día"]').fill(targetDate);
-  await page.getByRole("button", { name: "Filtrar", exact: true }).click();
-  await page.getByRole("button", { name: "Filtrar", exact: true }).waitFor({ state: "visible" });
-  await page.locator(".bookings-calendar__item").first().waitFor({ state: "visible", timeout: 20_000 });
+  const dayInput = page
+    .locator('input[placeholder="Día"]:visible')
+    .first();
+
+  await dayInput.fill(targetDate);
+
+  const filterButton = page
+    .locator("button:visible")
+    .filter({ hasText: /^Filtrar$/ })
+    .first();
+
+  await filterButton.click();
+
+  await page
+    .locator(".bookings-calendar__item:visible")
+    .first()
+    .waitFor({ state: "visible", timeout: 20_000 });
 }
 
 async function reserveTargetClass() {
-  const card = page.locator(".bookings-calendar__item")
+  const card = page
+    .locator(".bookings-calendar__item:visible")
     .filter({ hasText: TARGET_CLASS })
     .filter({ hasText: TARGET_TIME });
 
   if ((await card.count()) !== 1) {
-    throw new Error(`No se encontro una unica clase ${TARGET_CLASS} a las ${TARGET_TIME} para ${targetDate}.`);
+    throw new Error(
+      `No se encontro una unica clase ${TARGET_CLASS} a las ${TARGET_TIME} para ${targetDate}.`
+    );
   }
 
   const cardText = await card.innerText();
   const capacity = cardText.match(/(\d+)\s+plazas disponibles/i);
+
   if (!capacity || Number(capacity[1]) < 1) {
-    throw new Error(`La clase ${TARGET_CLASS} de las ${TARGET_TIME} no tiene plazas disponibles.`);
+    throw new Error(
+      `La clase ${TARGET_CLASS} de las ${TARGET_TIME} no tiene plazas disponibles.`
+    );
   }
 
   if (dryRun) {
-    console.log(`[DRY RUN] Clase localizada: ${TARGET_CLASS}, ${targetDate} ${TARGET_TIME}, ${capacity[1]} plazas.`);
+    console.log(
+      `[DRY RUN] Clase localizada: ${TARGET_CLASS}, ${targetDate} ${TARGET_TIME}, ${capacity[1]} plazas.`
+    );
     return;
   }
 
-  await card.getByRole("button", { name: `Reservar clase: ${TARGET_CLASS}` }).click();
+  await card
+    .getByRole("button", { name: `Reservar clase: ${TARGET_CLASS}` })
+    .click();
 
   const dialog = page.getByRole("dialog");
+
   if (await dialog.isVisible().catch(() => false)) {
-    const confirm = dialog.getByRole("button", { name: /confirmar|reservar/i }).last();
-    if (await confirm.isVisible().catch(() => false)) await confirm.click();
+    const confirm = dialog
+      .getByRole("button", { name: /confirmar|reservar/i })
+      .last();
+
+    if (await confirm.isVisible().catch(() => false)) {
+      await confirm.click();
+    }
   }
 
   await page.waitForTimeout(1_500);
   await openBookings();
+
   if (!(await isAlreadyBooked())) {
-    throw new Error("VivaGym no mostro la reserva en Tus proximas clases.");
+    throw new Error(
+      "VivaGym no mostro la reserva en Tus proximas clases."
+    );
   }
 
-  console.log(`Reserva confirmada: ${TARGET_CLASS}, ${TARGET_GYM}, ${targetDate} a las ${TARGET_TIME}.`);
+  console.log(
+    `Reserva confirmada: ${TARGET_CLASS}, ${TARGET_GYM}, ${targetDate} a las ${TARGET_TIME}.`
+  );
 }
 
 try {
@@ -132,12 +198,20 @@ try {
   await openBookings();
 
   if (await isAlreadyBooked()) {
-    console.log(`La clase ${TARGET_CLASS} del ${targetDate} a las ${TARGET_TIME} ya estaba reservada.`);
+    console.log(
+      `La clase ${TARGET_CLASS} del ${targetDate} a las ${TARGET_TIME} ya estaba reservada.`
+    );
   } else {
     await selectGym();
     await loadTargetDay();
     await reserveTargetClass();
   }
+} catch (error) {
+  console.error(`Página final: ${page.url()}`);
+  console.error(
+    `Título final: ${await page.title().catch(() => "No disponible")}`
+  );
+  throw error;
 } finally {
   await browser.close();
 }
