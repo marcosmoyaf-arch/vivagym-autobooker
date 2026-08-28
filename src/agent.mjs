@@ -41,7 +41,7 @@ async function login() {
     await acceptCookies.click({ force: true });
   }
 
-  if (await page.locator('a[aria-label="Cerrar sesión"]').first()).isVisible().catch(() => false)) return;
+  if (await page.locator('a[aria-label="Cerrar sesión"]').first().isVisible().catch(() => false)) return;
 
   await page.locator('input[name="email"]').fill(email);
   await page.locator('input[name="password"]').fill(password);
