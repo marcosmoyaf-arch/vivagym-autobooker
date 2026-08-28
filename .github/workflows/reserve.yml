@@ -1,14 +1,15 @@
-name: Reservar V-Power
+name: Reservar clases VivaGym
 
 on:
   schedule:
-    # GitHub usa UTC. Cubre las 20:15 de Madrid en horario de verano e invierno.
+    # GitHub usa UTC. El agente filtra la hora exacta de Madrid y contempla verano e invierno.
     - cron: "*/5 18-20 * * 1"
+    - cron: "*/5 13-16 * * 5"
 
   workflow_dispatch:
     inputs:
       dry_run:
-        description: "Solo comprobar, sin reservar"
+        description: "Solo comprobar las dos clases, sin reservar"
         required: true
         default: true
         type: boolean
@@ -17,7 +18,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: vivagym-vpower-monday
+  group: vivagym-weekly-classes
   cancel-in-progress: false
 
 jobs:
@@ -56,5 +57,5 @@ jobs:
         if: always()
         run: |
           echo "## Agente VivaGym" >> "$GITHUB_STEP_SUMMARY"
-          echo "Objetivo: V-Power presencial, Dos Hermanas, lunes 20:15." >> "$GITHUB_STEP_SUMMARY"
+          echo "Objetivos: V-Power (lunes 20:15) y Virtual Cycling (viernes 15:30), Dos Hermanas." >> "$GITHUB_STEP_SUMMARY"
           echo "Resultado del trabajo: ${{ job.status }}." >> "$GITHUB_STEP_SUMMARY"
