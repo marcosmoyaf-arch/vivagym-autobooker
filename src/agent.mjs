@@ -1,11 +1,30 @@
 import { chromium } from "playwright";
-import { isBookingWindow, nextMondayIso, shortSpanishDate } from "./schedule.mjs";
+import {
+  isBookingWindow,
+  nextWeekdayIso,
+  shortSpanishDate,
+  longSpanishDate
+} from "./schedule.mjs";
 
 const LOGIN_URL = "https://www.vivagym.com/es-es/members/login/";
 const BOOKINGS_URL = "https://www.vivagym.com/es-es/members/bookings/";
-const TARGET_GYM = "Dos Hermanas";
-const TARGET_CLASS = "V-Power";
-const TARGET_TIME = "20:15";
+
+const TARGETS = [
+  {
+    gym: "Dos Hermanas",
+    className: "V-Power",
+    weekday: "Mon",
+    weekdayName: "lunes",
+    time: "20:15"
+  },
+  {
+    gym: "Dos Hermanas",
+    className: "Virtual Cycling",
+    weekday: "Fri",
+    weekdayName: "viernes",
+    time: "15:30"
+  }
+];
 
 const email = process.env.VIVAGYM_EMAIL;
 const password = process.env.VIVAGYM_PASSWORD;
@@ -16,13 +35,15 @@ if (!email || !password) {
   throw new Error("Faltan los secretos VIVAGYM_EMAIL o VIVAGYM_PASSWORD.");
 }
 
-if (runMode === "schedule" && !isBookingWindow()) {
-  console.log("Fuera de la ventana de reserva de los lunes 20:15-22:00 (Europe/Madrid).");
+const activeTargets = runMode === "schedule"
+  ? TARGETS.filter((target) => isBookingWindow(target))
+  : TARGETS;
+
+if (activeTargets.length === 0) {
+  console.log("Fuera de las ventanas de reserva configuradas (Europe/Madrid).");
   process.exit(0);
 }
 
-const targetDate = nextMondayIso();
-const targetShortDate = shortSpanishDate(targetDate);
 const browser = await chromium.launch({ headless: true });
 const context = await browser.newContext({
   locale: "es-ES",
@@ -65,17 +86,20 @@ async function openBookings() {
     .waitFor({ state: "visible", timeout: 20_000 });
 }
 
-async function isAlreadyBooked() {
+async function isAlreadyBooked(target, targetDate) {
   const mainText = await page.locator("main").innerText();
+  const dateMatches = [shortSpanishDate(targetDate), longSpanishDate(targetDate)]
+    .some((date) => mainText.includes(date));
 
   return (
-    mainText.includes(TARGET_CLASS) &&
-    mainText.includes(`${targetShortDate} a las ${TARGET_TIME}`) &&
-    mainText.includes(TARGET_GYM)
+    mainText.includes(target.className) &&
+    mainText.includes(target.time) &&
+    mainText.includes(target.gym) &&
+    dateMatches
   );
 }
 
-async function selectGym() {
+async function selectGym(gym) {
   const gymButton = page.getByRole("button", {
     name: "Gimnasio",
     exact: true
@@ -88,10 +112,10 @@ async function selectGym() {
     .first();
 
   await search.waitFor({ state: "visible" });
-  await search.fill(TARGET_GYM);
+  await search.fill(gym);
 
   const target = page
-    .locator(`input[type="checkbox"][aria-label="${TARGET_GYM}"]:visible`)
+    .locator(`input[type="checkbox"][aria-label="${gym}"]:visible`)
     .first();
 
   await target.waitFor({ state: "visible" });
@@ -103,7 +127,7 @@ async function selectGym() {
   for (let i = (await selected.count()) - 1; i >= 0; i -= 1) {
     const option = selected.nth(i);
 
-    if ((await option.getAttribute("aria-label")) !== TARGET_GYM) {
+    if ((await option.getAttribute("aria-label")) !== gym) {
       await option.uncheck({ force: true });
     }
   }
@@ -115,7 +139,7 @@ async function selectGym() {
   await gymButton.click();
 }
 
-async function loadTargetDay() {
+async function loadTargetDay(targetDate) {
   const dayInput = page
     .locator('input[placeholder="Día"]:visible')
     .first();
@@ -135,15 +159,15 @@ async function loadTargetDay() {
     .waitFor({ state: "visible", timeout: 20_000 });
 }
 
-async function reserveTargetClass() {
+async function reserveTargetClass(target, targetDate) {
   const card = page
     .locator(".bookings-calendar__item:visible")
-    .filter({ hasText: TARGET_CLASS })
-    .filter({ hasText: TARGET_TIME });
+    .filter({ hasText: target.className })
+    .filter({ hasText: target.time });
 
   if ((await card.count()) !== 1) {
     throw new Error(
-      `No se encontro una unica clase ${TARGET_CLASS} a las ${TARGET_TIME} para ${targetDate}.`
+      `No se encontro una unica clase ${target.className} a las ${target.time} para ${targetDate}.`
     );
   }
 
@@ -152,19 +176,19 @@ async function reserveTargetClass() {
 
   if (!capacity || Number(capacity[1]) < 1) {
     throw new Error(
-      `La clase ${TARGET_CLASS} de las ${TARGET_TIME} no tiene plazas disponibles.`
+      `La clase ${target.className} de las ${target.time} no tiene plazas disponibles.`
     );
   }
 
   if (dryRun) {
     console.log(
-      `[DRY RUN] Clase localizada: ${TARGET_CLASS}, ${targetDate} ${TARGET_TIME}, ${capacity[1]} plazas.`
+      `[DRY RUN] Clase localizada: ${target.className}, ${targetDate} ${target.time}, ${capacity[1]} plazas.`
     );
     return;
   }
 
   await card
-    .getByRole("button", { name: `Reservar clase: ${TARGET_CLASS}` })
+    .getByRole("button", { name: `Reservar clase: ${target.className}` })
     .click();
 
   const dialog = page.getByRole("dialog");
@@ -182,14 +206,14 @@ async function reserveTargetClass() {
   await page.waitForTimeout(1_500);
   await openBookings();
 
-  if (!(await isAlreadyBooked())) {
+  if (!(await isAlreadyBooked(target, targetDate))) {
     throw new Error(
-      "VivaGym no mostro la reserva en Tus proximas clases."
+      `VivaGym no mostro la reserva de ${target.className} en Tus proximas clases.`
     );
   }
 
   console.log(
-    `Reserva confirmada: ${TARGET_CLASS}, ${TARGET_GYM}, ${targetDate} a las ${TARGET_TIME}.`
+    `Reserva confirmada: ${target.className}, ${target.gym}, ${targetDate} a las ${target.time}.`
   );
 }
 
@@ -197,14 +221,20 @@ try {
   await login();
   await openBookings();
 
-  if (await isAlreadyBooked()) {
-    console.log(
-      `La clase ${TARGET_CLASS} del ${targetDate} a las ${TARGET_TIME} ya estaba reservada.`
-    );
-  } else {
-    await selectGym();
-    await loadTargetDay();
-    await reserveTargetClass();
+  for (const target of activeTargets) {
+    const targetDate = nextWeekdayIso(target.weekday);
+
+    if (await isAlreadyBooked(target, targetDate)) {
+      console.log(
+        `La clase ${target.className} del ${targetDate} a las ${target.time} ya estaba reservada.`
+      );
+      continue;
+    }
+
+    await selectGym(target.gym);
+    await loadTargetDay(targetDate);
+    await reserveTargetClass(target, targetDate);
+    await openBookings();
   }
 } catch (error) {
   console.error(`Página final: ${page.url()}`);
